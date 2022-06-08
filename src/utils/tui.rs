@@ -868,6 +868,7 @@ impl App<'_> {
                                         2 => {
                                             if empty {
                                                 self.current_config.tags.as_mut().unwrap().push(String::default());
+                                                self.current_window = Window::Tags {index, empty: false};
                                             } else {
                                                 self.current_popup = Some(0);
                                                 self.current_popup_state = PopupState::String(String::default());

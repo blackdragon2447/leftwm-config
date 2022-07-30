@@ -1,14 +1,12 @@
-use std::{env, fs};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::path::Path;
+use std::path::PathBuf;
+use std::{env, fs};
 
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use xdg::BaseDirectories;
-
+use anyhow::{bail, Result};
 pub use check::check_config;
 use layout::Layout;
+use serde::{Deserialize, Serialize};
 
 use crate::config::keybind::Keybind;
 use crate::config::layout::LAYOUTS;
@@ -16,13 +14,20 @@ use crate::config::modifier::Modifier;
 use crate::config::structs::{ScratchPad, WindowHook, Workspace};
 use crate::config::values::{BaseCommand, FocusBehaviour, InsertBehavior, LayoutMode, Size};
 
-pub mod layout;
-pub mod values;
-pub(crate) mod structs;
-pub mod modifier;
 mod check;
-mod keybind;
 mod command;
+mod keybind;
+pub mod layout;
+pub mod modifier;
+pub(crate) mod structs;
+pub mod values;
+
+#[derive(Copy, Clone)]
+#[allow(dead_code)]
+pub enum Language {
+    Ron,
+    Unsupported,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(default)]
@@ -65,7 +70,7 @@ fn default_terminal<'s>() -> &'s str {
         "konsole",
         "uxterm",
         "guake", // at the bottom because of odd behaviour. guake wants F12 and should really be
-        // started using autostart instead of LeftWM keybind.
+                 // started using autostart instead of LeftWM keybind.
     ];
 
     // If no terminal found in path, default to a good one
@@ -87,7 +92,6 @@ pub fn is_program_in_path(program: &str) -> bool {
     }
     false
 }
-
 
 impl Default for Config {
     // We allow this because this function would be difficult to reduce. If someone would like to
@@ -312,25 +316,10 @@ fn exit_strategy<'s>() -> &'s str {
 }
 
 #[must_use]
-pub fn load() -> Config {
-    let mut config = load_from_file(false)
+pub fn load(file: &PathBuf, lang: Language) -> Config {
+    load_from_file(false, file, lang)
         .map_err(|err| eprintln!("ERROR LOADING CONFIG: {:?}", err))
-        .unwrap_or_default();
-
-    if config.tags.is_none() {
-        config.tags = Some(vec![]);
-    }
-    if config.window_rules.is_none() {
-        config.window_rules = Some(vec![]);
-    }
-    if config.workspaces.is_none() {
-        config.workspaces = Some(vec![]);
-    }
-    if config.scratchpad.is_none() {
-        config.scratchpad = Some(vec![]);
-    }
-
-    config
+        .unwrap_or_default()
 }
 
 /// # Panics
@@ -345,40 +334,62 @@ pub fn load() -> Config {
 /// etc.).
 /// Function can also error from inability to save config.toml (if it is the first time running
 /// `LeftWM`).
-pub fn load_from_file(verbose: bool) -> Result<Config> {
-    let path = BaseDirectories::with_prefix("leftwm")?;
-    let config_filename = path.place_config_file("config.toml")?;
+pub fn load_from_file(verbose: bool, file: &PathBuf, lang: Language) -> Result<Config> {
     if verbose {
-        dbg!(&config_filename);
+        log::debug!("{:?}", &file);
     }
-    if Path::new(&config_filename).exists() {
-        let contents = fs::read_to_string(config_filename)?;
+    if file.exists() {
+        let contents = fs::read_to_string(&file)?;
         if verbose {
-            dbg!(&contents);
+            log::debug!("{:?}", &contents);
         }
-        let config = toml::from_str(&contents)?;
-        if check_workspace_ids(&config) {
-            Ok(config)
-        } else {
-            log::warn!("Invalid workspace ID configuration in config.toml. Falling back to default config.");
-            Ok(Config::default())
+        match lang {
+            Language::Ron => {
+                let config = ron::from_str(&contents)?;
+                if check_workspace_ids(&config) {
+                    Ok(config)
+                } else {
+                    log::warn!("Invalid workspace ID configuration in config.toml. Falling back to default config.");
+                    Ok(Config::default())
+                }
+            }
+            _ => bail!("Unsupported or unknow config language"),
         }
     } else {
         let config = Config::default();
-        let toml = toml::to_string(&config).unwrap();
-        let mut file = File::create(&config_filename)?;
-        file.write_all(toml.as_bytes())?;
+        match lang {
+            Language::Ron => {
+                let ron_pretty_conf = ron::ser::PrettyConfig::new()
+                    .depth_limit(2)
+                    .extensions(ron::extensions::Extensions::IMPLICIT_SOME);
+                let ron = ron::ser::to_string_pretty(&config, ron_pretty_conf).unwrap();
+                let mut file = File::create(&file)?;
+                file.write_all(ron.as_bytes())?;
+            }
+            _ => bail!("Unsupported or unknow config language"),
+        }
         Ok(config)
     }
 }
 
-pub fn save_to_file(config: &Config) -> Result<()> {
-    let path = BaseDirectories::with_prefix("leftwm")?;
-    let config_filename = path.place_config_file("config.toml")?;
+pub fn save_to_file(config: &Config, file: &PathBuf, lang: Language) -> Result<()> {
+    let text = match lang {
+        Language::Ron => {
+            let ron_pretty_conf = ron::ser::PrettyConfig::new()
+                .depth_limit(2)
+                .extensions(ron::extensions::Extensions::IMPLICIT_SOME);
+            ron::ser::to_string_pretty(&config, ron_pretty_conf).unwrap()
+        }
+        _ => bail!("Unsupported or unknow config language"),
+    };
 
-    let toml = toml::to_string(&config).unwrap();
-    let mut file = OpenOptions::new().write(true).read(true).create(true).open(&config_filename)?;
-    file.write_all(toml.as_bytes())?;
+    let mut file = OpenOptions::new()
+        .write(true)
+        .read(true)
+        .create(true)
+        .open(&file)?;
+    file.set_len(text.as_bytes().len().try_into().unwrap_or(0))?;
+    file.write_all(text.as_bytes())?;
 
     Ok(())
 }

@@ -54,10 +54,7 @@ pub fn text_input(
     f.render_widget(text, *chunks.get(1).unwrap_or(&area));
 }
 
-pub fn layouts(
-    current_popup_state: &mut PopupState,
-    f: &mut Frame<CrosstermBackend<Stdout>>,
-) {
+pub fn layouts(current_popup_state: &mut PopupState, f: &mut Frame<CrosstermBackend<Stdout>>) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::White))
@@ -206,5 +203,4 @@ pub fn layouts(
     } else {
         panic!("popup state incorrectly set")
     }
-
 }

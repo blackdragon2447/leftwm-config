@@ -818,7 +818,8 @@ impl App<'_> {
                                                 for s in &l.selected {
                                                     match s {
                                                         0 => {
-                                                            layouts.push(WMLayout::MainAndVertStack);
+                                                            layouts
+                                                                .push(WMLayout::MainAndVertStack);
                                                         }
                                                         1 => layouts
                                                             .push(WMLayout::MainAndHorizontalStack),

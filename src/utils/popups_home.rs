@@ -377,10 +377,7 @@ pub fn layout_mode(
     }
 }
 
-pub fn layouts(
-    current_popup_state: &mut PopupState,
-    f: &mut Frame<CrosstermBackend<Stdout>>,
-) {
+pub fn layouts(current_popup_state: &mut PopupState, f: &mut Frame<CrosstermBackend<Stdout>>) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::White))
